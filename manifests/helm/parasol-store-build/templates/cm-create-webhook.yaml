@@ -1,0 +1,50 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name:  {{ include "parasol-store-build.name" . }}-webhook-script
+  labels:
+    {{- include "parasol-store-build.labels" . | nindent 4 }}
+data:
+  playbook.yaml: |
+    - hosts: localhost
+      vars:
+        gitlab_host: {{ .Values.gitlab.host }}
+        gitlab_project: {{ .Values.gitlab.project }}
+        gitlab_token: ""
+        gitlab_branch: {{ .Values.gitlab.branch }}
+        webhook_url: https://wh-el-{{ .Release.Namespace }}.{{ .Values.cluster.subdomain }}
+        webhook_secret: ""
+      tasks:
+        - name: Get gitlab projects
+          ansible.builtin.uri:
+            url: https://{{ "{{" }} gitlab_host {{ "}}" }}/api/v4/projects?per_page=100
+            method: GET
+            body_format: form-urlencoded
+            headers:
+              PRIVATE-TOKEN: '{{ "{{" }} gitlab_token {{ "}}" }}'
+            validate_certs: false
+            status_code: [200]
+          register: r_gitlab_projects
+
+        - name: set gitlab projects id
+          set_fact:
+            gitlab_project_id: '{{ "{{" }} r_gitlab_projects.json | json_query(query) {{ "}}" }}'
+          vars:
+            query: {{ "\"" }}[?name=='{{ "{{" }} gitlab_project {{ "}}" }}'].id{{ "\"" }}
+
+        - name: Create {{ "{{" }} gitlab_project {{ "}}" }} web hook
+          ansible.builtin.uri:
+            url: 'https://{{ "{{" }} gitlab_host {{ "}}" }}/api/v4/projects/{{ "{{" }} gitlab_project_id[0] {{ "}}" }}/hooks'
+            method: POST
+            body_format: form-urlencoded
+            body:
+              url: '{{ "{{" }} webhook_url {{ "}}" }}'
+              push_events: true
+              token: '{{ "{{" }} webhook_secret {{ "}}" }}'
+              enable_ssl_verification: false
+              branch_filter_strategy: regex
+              push_events_branch_filter: '^({{ "{{" }} gitlab_branch {{ "}}" }})'
+            headers:
+              PRIVATE-TOKEN: '{{ "{{" }} gitlab_token {{ "}}" }}'
+            validate_certs: false
+            status_code: [201]

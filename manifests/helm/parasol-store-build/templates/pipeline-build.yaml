@@ -1,0 +1,140 @@
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: {{ include "parasol-store-build.name" . }}-build
+  labels:
+    {{- include "parasol-store-build.labels" . | nindent 4 }}
+spec:
+  params:
+    - name: source-repo
+      description: source repo that contains the application code
+      type: string
+    - name: source-branch
+      description: source branch to build from
+      default: {{ .Values.gitlab.branch }}
+      type: string
+    - name: dockerfile
+      type: string
+      default: {{ .Values.image.dockerfile }}
+    - name: output-image
+      type: string
+      default: {{ include "image.url" . }}
+    - name: output-image-tag
+      type: string
+      default: {{ .Values.image.tag }}
+    - description: the user authorizing the push
+      name: username
+      type: string
+    - description: that user's email
+      name: email
+      type: string
+    
+  tasks:
+    ### Uncomment for gitsign verification ###
+    ##########################################
+    - name: setup-gitsign-environment
+      taskRef:
+        name: setup-environment
+      workspaces:
+        - name: environment
+          workspace: tas-environment
+
+    - name: verify-commit
+      runAfter:
+        - setup-gitsign-environment
+        - git-clone
+      params:
+        - name: username
+          value: $(params.username)
+        - name: email
+          value: $(params.email)
+        - name: tas-env-vars
+          value: $(tasks.setup-gitsign-environment.results.tas-env-vars)
+      taskRef:
+        name: verify-commit
+      workspaces:
+        - name: environment
+          workspace: tas-environment
+        - name: source
+          workspace: source-folder
+    ###########################################
+
+    - name: git-clone
+      params:
+        - name: URL
+          value: $(params.source-repo)
+        - name: REVISION
+          value: $(params.source-branch)
+      taskRef:
+        resolver: cluster
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: git-clone
+          - name: namespace
+            value: openshift-pipelines    
+      workspaces:
+        - name: output
+          workspace: source-folder
+    - name: build-source
+      runAfter:
+      ### Uncomment the verify commit task and comment the git-clone task for proper sequence order
+        - verify-commit
+      #  - git-clone
+      params:
+        - name: GOALS
+          value:
+            - package
+      taskRef:
+        resolver: cluster
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: maven
+          - name: namespace
+            value: openshift-pipelines
+      workspaces:
+        - name: source
+          workspace: source-folder
+        - name: maven_settings
+          workspace: maven-settings
+    - name: build-and-push-image
+      runAfter:
+        - build-source
+      params:
+        - name: DOCKERFILE
+          value: $(params.dockerfile)
+        - name: IMAGE
+          value: $(params.output-image):$(params.output-image-tag)
+        - name: TLSVERIFY
+          value: 'false'
+      taskRef:
+        resolver: cluster
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: buildah
+          - name: namespace
+            value: {{ .Release.Namespace }}       
+      workspaces:
+        - name: source
+          workspace: source-folder
+    - name: resync
+      runAfter:
+        - build-and-push-image
+      taskRef:
+        resolver: cluster
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: resync
+          - name: namespace
+            value: {{ .Release.Namespace }}
+  workspaces:
+    - name: source-folder
+    - name: maven-settings
+    - name: tas-environment

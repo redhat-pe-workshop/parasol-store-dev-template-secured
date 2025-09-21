@@ -1,0 +1,15 @@
+gitlab:
+  host:
+  group:
+  project:
+  branch: 
+
+image:
+  dockerfile: ./src/main/docker/Dockerfile.jvm
+  host:
+  namespace:
+  name:
+  tag:
+
+cluster:
+  subdomain:
