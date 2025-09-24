@@ -28,7 +28,12 @@ spec:
     - description: that user's email
       name: email
       type: string
-    
+  results:
+    - name: QUAY_SCAN_OUTPUT
+      value: "$(tasks.scan-image.results.QUAY_SCAN_OUTPUT)"
+    - name: QUAY_ANALYSIS_URL
+      value: "$(tasks.scan-image.results.ANALYSIS_URL)"
+
   tasks:
     ### Uncomment for gitsign verification ###
     ##########################################
@@ -122,6 +127,31 @@ spec:
       workspaces:
         - name: source
           workspace: source-folder
+    #################
+    ##Scan image task
+    - name: scan-image
+      taskRef:
+        name: scan-image-via-quay
+      params:
+        - name: QUAY_TOKEN
+          value: $(tasks.setup-gitsign-environment.results.quay-token)
+        - name: SOURCE_IMAGE
+          value: $(params.output-image):$(params.output-image-tag)
+        - name: QUAY_REGISTRY_URL
+          value: $(tasks.setup-gitsign-environment.results.quay-url)
+        - name: QUAY_DOCKERCONFIGJSON
+          value: $(tasks.setup-gitsign-environment.results.quay-dockerconfigjson)
+        - name: TARGET_IMAGE_TAG
+          value: {{ .Release.Namespace }}
+        - name: QUAY_NAMESPACE
+          value: "parasol"
+      
+      runAfter:
+        - build-and-push-image
+
+
+
+    #################
     - name: resync
       runAfter:
         - build-and-push-image
@@ -138,3 +168,5 @@ spec:
     - name: source-folder
     - name: maven-settings
     - name: tas-environment
+    
+    

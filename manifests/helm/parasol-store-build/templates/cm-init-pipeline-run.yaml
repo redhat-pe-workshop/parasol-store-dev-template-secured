@@ -30,7 +30,7 @@ data:
           ##Note: The first run, triggered by the job will not have
           ##      commit verification, therefore not needed (and not available anyway)
       pipelineRef:
-        name: {{ include "parasol-store-build.name" . }}-build
+        name: {{ include "parasol-store-build.name" . }}-build-init
       taskRunTemplate:
         serviceAccountName: pipeline
       timeouts:
